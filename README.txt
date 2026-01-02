@@ -13,7 +13,7 @@ communication of results using Python, R, Jupyter, and Quarto.
 Projects cover topics including public health, economics, energy markets,
 and transportation data.
 
-I hope you enjoy my analysis.
+I hope you enjoy my work.
 
 Sincerly,
 Leonardo Corredor
