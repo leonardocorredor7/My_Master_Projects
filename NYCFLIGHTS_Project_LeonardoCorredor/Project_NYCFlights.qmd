@@ -1,0 +1,301 @@
+---
+title: "Project NYC Flights"
+author: "Jaime Leonardo Corredor Quinche"
+format:
+  html:
+    embed-resources: true
+    code-fold: true
+    toc: true
+---
+
+This Homework Project works with dataframes in the package `nycflights13` about flights, specifically a sample of domestic flights that departed from the three major New York City airports in 2013. 
+
+# Data overview
+
+## Package loading
+
+```{r}
+#| label: packages-data
+#| message: false  # We do not want to see the tidyverse loading flightgsmessage in our document
+#| echo: false
+library(tidyverse)
+library(patchwork)            # Install this package before. It helps to combine different plots.
+library(nycflights13)
+library(knitr) #for tables
+```
+
+## Package overview
+
+- The data package `nycflights13` package contains five tabular data frames. In total there is information about:
+  - `r nrow(airlines)` **airlines**
+  - `r nrow(airports)` **airports**
+  - `r nrow(planes)` **planes**
+  - `r nrow(flights)` **flights**
+
+
+The core dataframe `flights` has the following variables: 
+
+`year`, `month`, `day`: **Date** of departure.  
+`dep_time`, `arr_time`: Actual **departure** and **arrival** times (format HHMM or HMM), local time zone.  
+`sched_dep_time`, `sched_arr_time`: **Scheduled departure** and **arrival** times (format HHMM or HMM), local time zone.  
+`dep_delay`, `arr_delay`: **Departure** and **arrival delays**, in minutes. 
+Negative times represent early departures/arrivals.  
+`carrier`: Two letter **carrier** abbreviation. See `airlines`-dataframe to get the full name. 
+
+Basic data visualization
+
+```{r}
+#| label: flightsorigin
+ggplot(data = flights, mapping = aes(x = origin)) + 
+  geom_bar()
+```
+In the `flights` dataframe, the `EWR` variable has **120835** rows, the `JFK` has **111279** rows, and the LGA airport has **104662** rows, resulting in a total of **`r nrow(flights)`** flights
+
+```{r}
+ggplot(data = flights, mapping = aes(x = distance)) + ## It executes origin historiogram
+geom_histogram(binwidth = 50) + 
+labs(title = "Distribution of flight distance", x = "Distance (miles)", y = "Number of flights") 
+```
+
+### Distribution of flight distance
+
+- Most flights are at **short to medium distances**, mainly below **1,500 miles**. The distribution is **right-skewed**, with a few very long flights.
+
+- Short-haul routes **dominate** the dataset. Long-distance flights are **less frequent** and appear as extreme values.
+
+
+
+```{r}
+#| label: distributions
+g1 <- ggplot(data = planes, mapping = aes(y = seats, x = 0)) + 
+  geom_point()
+g2 <- ggplot(data = planes, mapping = aes(y = seats)) + 
+  geom_boxplot()
+g3 <- ggplot(data = flights, mapping = aes(y = distance)) +
+    geom_histogram(binwidth = 50)# Make your solution into this line
+g1 + g2 + g3
+```
+
+### Distributions of seats and distance
+
+- Seats are shown with **points** and a **boxplot**, with many values around the middle.
+- There are several **outliers**, especially planes with very high seat counts.
+- Flight distance shows many **short flights** and fewer long ones.
+
+```{r}
+#| label: engine-seats
+ggplot(data = planes, mapping = aes(x = engine, y = seats)) +    ## Defines boxplot seats by motor tpye
+  geom_boxplot() +                        
+    labs(title = "Seats by engine type",                                            
+       x = "Engine type",                                                        
+       y = "Seats")                                                              
+```
+
+### Seats by engine type
+
+- Turbo-fan and turbo-jet planes have the **highest number of seats**. Large commercial aircraft usually use **turbo-fan or turbo-jet engines**.
+- These engine types also show **more variability** and several outliers. Smaller engines are linked to **regional or small planes**.
+- Other engines (reciprocating, turbo-prop, turbo-shaft) have **much fewer seats**. Engine type is **strongly related** to aircraft capacity.
+
+
+```{r}
+#| label: delays
+flights |>
+  group_by(origin) |>
+  summarise(
+    avg_dep_delay = mean(dep_delay, na.rm = TRUE),
+    avg_arr_delay = mean(arr_delay, na.rm = TRUE)
+  ) |>
+  pivot_longer(
+    cols = c(avg_dep_delay, avg_arr_delay),
+    names_to = "delay_type",
+    values_to = "minutes"
+  ) |>
+  ggplot(aes(x = origin, y = minutes, fill = delay_type)) +
+  geom_col(position = "dodge") +
+  labs(
+    title = "Average departure and arrival delay by origin",
+    x = "Origin airport",
+    y = "Average delay (minutes)",
+    fill = "Delay type"
+  )
+
+```
+
+### Average departure and arrival delay by origin
+
+- EWR shows the **highest average delays**, which suggests this airport has more congestion or operational issues.
+- For all airports, **departure delay is higher than arrival delay**, meaning some delay is recovered during the flight.
+- LGA has the **lowest average delays**, indicating more efficient or shorter operations.
+
+
+```{r}
+#| label: airportlocations
+airports |>
+  count(tzone) |>
+  ggplot(aes(x = tzone, y = n, fill = tzone)) +
+  geom_col() +
+  labs(
+    title = "Number of airports by timezone",
+    x = "Timezone",
+    y = "Number of airports",
+    fill = "Timezone"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+### Number of airports by timezone
+
+- America/New_York has the **highest number of airports**, which reflects the high concentration of air traffic in the eastern U.S.
+- America/Chicago and America/Los_Angeles also show **large counts**, indicating major aviation hubs in central and western regions.
+- Timezones like America/Phoenix, Pacific/Honolulu, and Asia/Chongqing have **very few airports**.
+- NA appears with a **small count**, which shows missing or undefined timezone information for some airports.
+
+
+# Data Wrangling
+
+```{r}
+#| label: flightsaveragespeed
+flights |>
+  mutate(speed_kmh = (distance * 1.60934) / (air_time / 60)) |>                    
+  ## Calculates speed: km/h (miles->km and min->h)
+  select(air_time, distance, speed_kmh)  
+  
+  flights |>      
+  mutate(speed_kmh = (distance * 1.60934) / (air_time / 60)) |>                    
+   ggplot(mapping = aes(x = speed_kmh)) +     
+     geom_histogram(binwidth = 25) +    
+  labs(title = "Distribution of estimated flight speed",                           
+       x = "Speed (km/h)",                                                         
+       y = "Number of flights")          
+```
+
+### Distribution of estimated flight speed
+
+- The distribution looks **roughly bell-shaped**, suggesting speed is fairly consistent across flights.
+
+
+
+```{r}
+#| label: filtering
+
+n_arr_120 <- flights |> filter(arr_delay >= 120) |> nrow()
+## arr_delay flights > 2 hours
+
+n_houston <- flights |> filter(dest %in% c("IAH", "HOU")) |> nrow()
+## Flights to Houston
+
+n_arr_not_dep <- flights |> filter(arr_delay > 120, dep_delay <= 0) |> nrow()
+## Arr Delay but not dep Delay
+
+n_dep_hold <- flights |> filter(dep_delay >= 60, arr_delay <= dep_delay - 30) |> nrow()
+## Flights with long departure delay and recovered time
+
+cat(
+  "Flights with arrival delay ≥ 120 min:", n_arr_120, "\n",
+  "Flights to Houston (IAH, HOU):", n_houston, "\n",
+  "Flights with large arrival delay but no departure delay:", n_arr_not_dep, "\n",
+  "Flights with long departure delay and recovered time:", n_dep_hold
+)
+```
+- There are **10,200 flights with arrival delays over two hours**, showing that severe delays are not rare.
+- A total of **9,313 flights go to Houston**, indicating high traffic to IAH and HOU.
+- Only **29 flights arrive very late without departing late**, so delays usually start at departure.
+- There are **2,074 flights that recover at least 30 minutes**, meaning airlines can sometimes make up time in the air.
+
+```{r}
+#| label: summarizing
+flights |>
+summarize(mean_dep_delay = mean(dep_delay, na.rm = TRUE), .by = origin) |> ## Average dep_delay by prigin
+arrange(desc(mean_dep_delay)) |> ## Ordering by descending
+kable(digits = 2) ## Creating table
+```
+
+- EWR has the **highest average departure delay**, there might be more congestion or operational issues at this airport.
+
+
+
+# Data Audit
+
+```{r}
+airports |>
+filter(lon > 0) |> ## Filter positive values
+select(faa, name, lat, lon, tzone) |> 
+arrange(desc(lon)) |> ## Order by lenght
+kable() ## Tabla para ver los 4 aeropuertos
+```
+
+
+# More Data Visualization
+
+```{r}
+#label: flights-by-airline
+flights |>
+count(carrier, name = "n_flights") |>                                                        ## counts lfights by cerrer
+left_join(airlines, by = join_by(carrier)) |>                                                ## it jpins the data with airlines datas set
+mutate(name = fct_reorder(name, n_flights)) |>                                               ## orders by number of flights
+ggplot(mapping = aes(x = n_flights, y = name)) +                                             
+geom_col() +                                                                                 
+labs(title = "Number of flights by airline (NYC, 2013)", x = "Number of fights", y = "")    
+```
+
+- United Air Lines Inc. has the **highest number of flights**.
+- JetBlue Airways and ExpressJet Airlines also have **very high flight counts**.
+- American Airlines has **fewer flights than the top four**, suggesting a smaller operational footprint in NYC.
+
+
+  ```{r}
+  #| label: depdelay-by-airline
+  flights |>
+  summarize(mean_dep_delay = mean(dep_delay, na.rm = TRUE), .by = carrier) |> 
+  ## Average dep_delay by carrier
+  left_join(airlines, by = join_by(carrier)) |> ## joins by airlines
+  mutate(name = fct_reorder(name, mean_dep_delay)) |> ## reorder by average dep_delay
+  ggplot(mapping = aes(x = mean_dep_delay, y = name)) + 
+  geom_col() + ## Barras
+  labs(title = "Mean departure delay by airline (NYC, 2013)", x = "Mean departure delay (min)", y = "") 
+  ```
+
+- Frontier Airlines shows the **highest mean departure delay**, which suggests frequent operational issues.
+- ExpressJet and Mesa Airlines also have **high average delays**, indicating consistent departure problems.
+- Major carriers like United, Delta, and American have **lower mean delays**, showing more  efficient operations.
+- Alaska and Hawaiian Airlines have the **lowest average departure delays**, being the most punctual.
+
+
+```{r}
+#| label: planes-by-manufacture-year
+planes_clean <- planes |>
+rename(manufacture_year = year) ## avoids conflict with flights$year
+
+flights |>
+left_join(planes_clean, by = join_by(tailnum)) |> ## joins flight info  by tailnum
+left_join(airports |> select(faa, origin_name = name), by = join_by(origin == faa)) |> 
+## Ujoins the whole name of the airport
+filter(!is.na(manufacture_year)) |> ## filters missing year values
+count(origin_name, manufacture_year, name = "n_flights") |> ## counts flights by origin, manufacture year and name
+ggplot(mapping = aes(x = manufacture_year, y = n_flights)) + 
+geom_col() + 
+facet_wrap(~ origin_name, ncol = 1, scales = "free_y") + 
+labs(title = "Flights by plane manufacture year, by origin airport", 
+x = "Manufacture year", y = "Number of flights") 
+```
+
+- Most flights come from planes manufactured in the **late 1990s to mid-2000s**.
+- Newark Liberty Intl shows the **highest flight counts overall**, meaning EWR  has maybe the **largest volume** in this dataset.
+- JFK has many flights from **newer aircraft (2000s)**.
+
+
+```{r}
+#| label: weekly-precip
+weather |>
+mutate(date = as.Date(paste(year, month, day, sep = "-"))) |> ## Creates  YYYY-M-D converts to Date
+mutate(week = week(date)) |> ## it takes number of the week
+summarize(total_precip = sum(precip, na.rm = TRUE), .by = c(origin, week)) |> ## precipitacion sume by week
+left_join(airports |> select(faa, origin_name = name), by = join_by(origin == faa)) |> 
+## Joins with the whokle airport name
+ggplot(mapping = aes(x = week, y = total_precip, color = origin_name)) + 
+  ## tme serie by week
+geom_line() + 
+labs(title = "Weekly precipitation by NYC origin airport (2013)",
+x = "Week of year", y = "Total precipitation (inches)", color = "Origin")
+```
+- There are a few sharp spikes (around the early 20s and late 40s weeks), which indicates **storm events** that increased total weekly rain a lot.

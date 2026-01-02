@@ -1,0 +1,284 @@
+---
+title: "FuelWatch Project"
+format:
+  html:
+    self-contained: true
+execute:
+  enabled: true
+  echo: true
+jupyter: python3
+---
+
+
+
+
+## Data Download Script (`data_download.py`)
+
+#The datasets used in this project are **not stored in the GitHub repository**. Instead, they are downloaded locally using the script "data_download.py".
+
+#This script downloads the monthly FuelWatch retail price data directly from the official website of the Western Australia Government. It automatically:
+
+#- Creates a local `data/` folder if it does not exist
+#- Builds the correct download links for each month
+#- Downloads the available CSV files into the `data/` folder
+
+#The CSV files are ignored by Git and are therefore not uploaded to GitHub. This keeps the repository clean and avoids storing large data files.
+
+#To download the data, run the script from the project directory:
+
+#bash
+#python data_download.py
+
+##Set Up
+
+```{python}
+import pandas as pd  
+import numpy as np  
+import matplotlib.pyplot as plt  
+import seaborn as sns  
+from pathlib import Path  # for the path of the data
+from sklearn.cluster import KMeans  
+```
+
+## Data import and standardization
+
+```{python}
+#loading and cleaning data
+data_path = Path("data")  # folder where the CSV files are stored
+files = sorted(data_path.glob("FuelWatchRetail-*.csv"))  # Collects all monthly CSV files
+
+data = pd.concat(  
+    [pd.read_csv(f) for f in files],  
+    ignore_index=True  
+)  # combining all csv files
+
+if "Unnamed: 10" in data.columns:  
+    data = data.drop(columns=["Unnamed: 10"])  #dropping unnecesary columns
+
+data = data.rename(  
+    columns={  
+        "REGION_DESCRIPTION": "REGION",  
+        "AREA_DESCRIPTION": "AREA",  
+        "BRAND_DESCRIPTION": "BRAND", 
+        "PRODUCT_PRICE": "PRICE"  # 
+    }  
+)  #Renaming columns
+
+required_cols = ["REGION", "AREA", "BRAND", "PRICE", "TRADING_NAME", "PUBLISH_DATE", "PRODUCT_DESCRIPTION"]  
+missing_cols = [c for c in required_cols if c not in data.columns]  
+
+if len(missing_cols) > 0:  
+    raise KeyError(f"After renaming, these required columns are missing: {missing_cols}. Available columns: {list(data.columns)}")  #avoids error after renaming
+
+data = data[data["PRODUCT_DESCRIPTION"] == "ULP"]  # taking only ULP rows 
+
+data["DATE"] = pd.to_datetime(  # Convert publish date to datetime
+    data["PUBLISH_DATE"],  
+    dayfirst=True,  # dd/mm/yyyy cases
+    errors="coerce"  
+)  
+
+data = data.dropna(subset=["DATE"])  # droping NANas
+
+weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]  # Defines weekday order
+data["WEEKDAY"] = pd.Categorical(  
+    data["DATE"].dt.day_name(),  
+    categories=weekday_order,  
+    ordered=True  
+)  
+
+list(data.columns) 
+```
+
+
+## Overview: Regions, Areas, and Brands
+
+# Observations by region
+```{python}
+region_counts = data["REGION"].value_counts().reset_index()  
+
+region_counts.columns = ["REGION", "N"]  # renaming columns avoding errosrs
+
+plt.figure(figsize=(8, 6))  
+sns.barplot(data=region_counts, y="REGION", x="N")  
+
+plt.title("Number of observations by region")  
+plt.xlabel("Number of observations") 
+plt.ylabel("Region") 
+plt.show()  
+```
+Most data points are located in the Metro region while, other regions have significantly fewer observations.
+
+# Observations by brand and region
+
+```{python}
+brand_region = (  
+    data  
+    .groupby(["BRAND", "REGION"])  # Group by brand and region
+    .size()  
+    .reset_index(name="N")  
+)  
+
+plt.figure(figsize=(10, 6))  
+sns.barplot(data=brand_region, x="BRAND", y="N", hue="REGION")  
+plt.title("Observatons by brand and region")  
+plt.xlabel("Brand")  
+plt.ylabel("Number of observations")  
+plt.legend(title="Region", bbox_to_anchor=(0.5, -0.25), loc="upper center", ncol=3)  
+plt.show()  
+```
+
+## Price Tends
+
+# Overall average price
+
+```{python}
+overall_avg_price = data["PRICE"].mean()
+overall_avg_price
+
+print ("Overall average price:", overall_avg_price)
+```
+
+# Average price over time
+```{python}
+avg_price_date = (
+    data
+    .groupby("DATE", as_index=False)
+    .agg(AVG_PRICE=("PRICE", "mean"))
+)
+
+plt.figure(figsize=(10, 6))
+sns.lineplot(data=avg_price_date, x="DATE", y="AVG_PRICE")
+plt.title("Average fuel price over time")
+plt.xlabel("Date")
+plt.ylabel("Average price")
+plt.show()
+```
+
+There is a clear long-term trend with periods of increase and decrease.
+
+# Average price by weekday
+```{python}
+avg_price_weekday = (
+    data
+    .groupby("WEEKDAY", as_index=False)
+    .agg(AVG_PRICE=("PRICE", "mean"))
+)
+
+plt.figure(figsize=(8, 6))
+sns.lineplot(
+    data=avg_price_weekday,
+    x="WEEKDAY",
+    y="AVG_PRICE",
+    marker="o"
+)
+plt.title("Average fuel price by weekday")
+plt.xlabel("Weekday")
+plt.ylabel("Average price")
+plt.show()
+```
+
+The most expensive prices are observed at the beginning of the week.
+
+# Average price over time by region
+```{python}
+avg_price_date_region = (  
+    data  # Use the cleaned dataset
+    .groupby(["REGION", "DATE"], as_index=False)  # Group by region and date
+    .agg(AVG_PRICE=("PRICE", "mean"))  
+)  
+
+g = sns.FacetGrid(  
+    avg_price_date_region,  
+    col="REGION",  
+    col_wrap=2,  # plot it in two columns so it can be visualizated better
+    height=3.2,  
+    sharey=True  
+)  
+
+g.map_dataframe(sns.lineplot, x="DATE", y="AVG_PRICE")  #ploting line visualization
+g.set_axis_labels("Date", "Average price")  
+g.set_titles(col_template="{col_name}")  
+g.fig.suptitle("Average fuel price over time by region", y=1.02)  # 
+plt.show()  
+```
+
+Strong oscillations are visible in Metro and Peel regions.While in other regons it is more stable.
+
+
+## Characterization Price Dynamics
+
+# Data Trasnsformation
+```{python}
+data["N_OBS_TRADING_NAME"] = (  # station level for trading
+    data  
+    .groupby(["TRADING_NAME", "BRAND"])["PRICE"]  # Group by station and same brand
+    .transform("size")  
+) 
+
+data["MEAN_PRICE"] = (  #station level for mean price feature
+    data  
+    .groupby(["TRADING_NAME", "BRAND"])["PRICE"]  # Group by station and same brand
+    .transform("mean") 
+)  
+
+data["SD_PRICE"] = (  #tation level for deviation price feature
+    data  
+    .groupby(["TRADING_NAME", "BRAND"])["PRICE"]  # Group by station and same brand
+    .transform("std")  
+)  
+```
+
+# Histogram of station-level SD_Price
+```{python}
+n_days = data["DATE"].nunique()  # total quantity of days in the dataset
+
+data_stations = (  
+    data  
+    .loc[data["N_OBS_TRADING_NAME"] == n_days, :]  
+    .loc[:, ["REGION", "TRADING_NAME", "BRAND", "MEAN_PRICE", "SD_PRICE"]]  
+    #selecting requred station-level columns
+    .drop_duplicates()  #droping duplicates
+)  
+
+plt.figure(figsize=(8, 6))  
+sns.histplot(data=data_stations, x="SD_PRICE", bins=40)  #historiogram
+plt.title("Histogram of station-level price stndard deviation (SD_PRICE)")  
+plt.xlabel("SD_PRICE")  
+plt.ylabel("Number of stations")  
+plt.show()  
+```
+# Stattions: Mean price vs. price variability by redion
+```{python}
+plt.figure(figsize=(9, 7))  
+sns.scatterplot(  
+    data=data_stations,  # creatd stationlevel data
+    x="MEAN_PRICE",  
+    y="SD_PRICE",  
+    hue="REGION",  
+    alpha=0.6  
+)  
+
+plt.title("Stations: Mean price vs. price variability colored by region")  
+plt.xlabel("MEAN_PRICE")  
+plt.ylabel("SD_PRICE")  
+plt.legend(title="REGION", bbox_to_anchor=(1.05, 1), loc="upper left")  
+plt.tight_layout()  
+plt.show() 
+
+# Compute correlation over all stations
+corr_all = data_stations["MEAN_PRICE"].corr(data_stations["SD_PRICE"])  
+corr_all  
+
+print ("Correlation over all stations", corr_all)
+```
+
+Stations with high price variability are mainly located in the Metro region.
+
+
+
+
+
+
+
+

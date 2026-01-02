@@ -1,0 +1,52 @@
+############################
+# Python
+############################
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+env/
+venv/
+
+############################
+# Jupyter / Positron / Quarto
+############################
+.ipynb_checkpoints/
+.quarto/
+*.log
+
+############################
+# Data (NO subir datasets grandes)
+############################
+data/
+datasets/
+*.parquet
+*.feather
+*.h5
+*.sqlite
+*.db
+
+############################
+# Outputs / modelos
+############################
+outputs/
+results/
+models/
+figures/generated/
+
+############################
+# OS / Editor
+############################
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+############################
+# Archivos temporales
+############################
+*.tmp
+*.bak
+*.swp
